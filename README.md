@@ -1,7 +1,5 @@
 # flowfit
 
-> The app [RunGap](https://www.rungap.com/) can successfully import FIT files from the Bosch eBike Flow app. Therefore, I am archiving this.
-
 `flowfit` takes a FIT file from Bosch's eBike [Flow](https://www.bosch-ebike.com/nl/producten/ebike-flow-app) app and magically cleans it, such that it can be imported by other apps correctly. This means:
 
 - Consolidating multiple records for the same timestamp into one.
