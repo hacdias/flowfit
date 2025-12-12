@@ -1,11 +1,16 @@
 import { convert } from './lib.js'
 
 document.addEventListener('DOMContentLoaded', () => {
-  const form = document.querySelector('#convertForm')
+  const form = document.querySelector('#form')
   const alert = document.querySelector('#alert')
 
   const showAlert = (message, type = 'error') => {
-    alert.innerHTML = `<p class='alert ${type}'>${message}</p>`
+    const p = document.createElement('p')
+    p.classList.add('alert', type)
+    p.innerText = message
+
+    alert.innerHTML = ''
+    alert.appendChild(p)
   }
 
   form.addEventListener('submit', async (event) => {
@@ -19,13 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return
     }
 
-    let calories
-    if (caloriesInput.value) {
-      calories = parseInt(caloriesInput.value, 10)
-      if (Number.isNaN(calories) || calories < 0) {
-        showAlert('Please enter a valid positive number for calories.', 'error')
-        return
-      }
+    const calories = parseInt(caloriesInput.value, 10)
+    if (Number.isNaN(calories) || calories < 0) {
+      showAlert('Please enter a valid positive number for calories.', 'error')
+      return
     }
 
     try {
@@ -33,7 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const arrayBuffer = await file.arrayBuffer()
       const inputBytes = new Uint8Array(arrayBuffer)
 
-      const convertedData = convert(inputBytes, { calories })
+      const convertedData = convert(inputBytes, {
+        calories,
+      })
 
       // Create a download link for the converted file
       const blob = new Blob([convertedData], {

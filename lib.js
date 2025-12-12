@@ -36,8 +36,7 @@ function consolidateRecords(messages) {
 
   return (
     Array.from(Object.values(messagesByTimestamp))
-      // Fixes weird issue where some readers where not able to properly read
-      // the values of some fields.
+      // Fixes weird issue where some readers are not able to read the values of some fields.
       .map((message) =>
         Object.fromEntries(
           Object.entries(message).sort((a, b) => {
@@ -51,7 +50,56 @@ function consolidateRecords(messages) {
   )
 }
 
-export function convert(input, options = { calories: undefined }) {
+function calculateAveragePower(lap) {
+  const records = lap.filter((r) => typeof r.power === 'number')
+  if (records.length === 1) {
+    return records[0].power
+  }
+
+  // This is an estimation. It could be that there's many missing points of power
+  // in the whole lap. The idea is mostly to have a weight to be able to distribute
+  // the calories.
+  const weightedPower = records.reduce(
+    (acc, _, i, a) =>
+      i === 0
+        ? a[i].power
+        : acc +
+          a[i].power *
+            (a[i].timestamp.getTime() - a[i - 1].timestamp.getTime()),
+    0
+  )
+
+  const start = records[0].timestamp.getTime()
+  const end = records[records.length - 1].timestamp.getTime()
+  return weightedPower / (end - start)
+}
+
+function splitRecordsIntoLaps(records) {
+  const activeGroups = records.reduce((laps, record) => {
+    if (laps.length === 0) {
+      laps.push([])
+    } else if (laps[laps.length - 1].length > 0) {
+      const lastLap = laps[laps.length - 1]
+      const lastRecord = lastLap[lastLap.length - 1]
+      if (
+        record.timestamp.getTime() - lastRecord.timestamp.getTime() >
+        10000 // 10 seconds
+      ) {
+        laps.push([])
+      }
+    }
+
+    laps[laps.length - 1].push(record)
+    return laps
+  }, [])
+
+  return activeGroups.map((records) => ({
+    records,
+    averagePower: calculateAveragePower(records),
+  }))
+}
+
+export function convert(input, options = { calories }) {
   const stream = Stream.fromByteArray(input)
   const decoder = new Decoder(stream)
   if (!decoder.checkIntegrity()) {
@@ -89,57 +137,42 @@ export function convert(input, options = { calories: undefined }) {
   })
 
   const consolidatedRecords = consolidateRecords(recordMesgs)
-
-  let lastTimestamp
-  let pauses = 0
-  for (const record of consolidatedRecords) {
-    const currentTimestamp = record.timestamp.getTime()
-
-    if (lastTimestamp) {
-      if (currentTimestamp - lastTimestamp > 5000) {
-        pauses += currentTimestamp - 1000 - lastTimestamp
-
-        encoder.onMesg(
-          Profile.MesgNum.EVENT,
-          makeStopTimerEvent(new Date(lastTimestamp + 1000))
-        )
-        encoder.onMesg(
-          Profile.MesgNum.EVENT,
-          makeStartTimerEvent(new Date(currentTimestamp - 1000))
-        )
-      }
-    } else {
-      encoder.onMesg(
-        Profile.MesgNum.EVENT,
-        makeStartTimerEvent(new Date(currentTimestamp))
-      )
-    }
-
-    lastTimestamp = currentTimestamp
-    encoder.onMesg(Profile.MesgNum.RECORD, record)
-  }
-
-  if (!(Array.isArray(sessionMesgs) && sessionMesgs.length === 1)) {
-    throw new Error('supports only a single session')
-  }
+  const groupedRecords = splitRecordsIntoLaps(consolidatedRecords)
 
   const firstTimestamp = consolidatedRecords[0].timestamp.getTime()
+  const lastTimestamp =
+    consolidatedRecords[consolidatedRecords.length - 1].timestamp.getTime()
 
-  const totalElapsedTime = (lastTimestamp - firstTimestamp) / 1000
-  const totalTimerTime = totalElapsedTime - pauses / 1000
-
-  encoder.onMesg(
-    Profile.MesgNum.EVENT,
-    makeStopTimerEvent(new Date(lastTimestamp))
+  const totalPower = groupedRecords.reduce(
+    (acc, group) => acc + group.averagePower,
+    0
   )
+  const totalElapsedTime = (lastTimestamp - firstTimestamp) / 1000
+  let totalTimerTime = 0
 
-  encoder.onMesg(Profile.MesgNum.LAP, {
-    timestamp: new Date(lastTimestamp),
-    startTime: new Date(firstTimestamp),
-    totalElapsedTime: totalElapsedTime,
-    totalTimerTime: totalTimerTime,
-    ...(options.calories ? { totalCalories: options.calories } : {}),
-  })
+  for (const { records: lap, averagePower } of groupedRecords) {
+    const start = lap[0].timestamp.getTime()
+    const end = lap[lap.length - 1].timestamp.getTime()
+    const lapTime = (end - start) / 1000
+
+    // Add start timer event, records, and stop timer event
+    encoder.onMesg(Profile.MesgNum.EVENT, makeStartTimerEvent(new Date(start)))
+    for (const record of lap) {
+      encoder.onMesg(Profile.MesgNum.RECORD, record)
+    }
+    encoder.onMesg(Profile.MesgNum.EVENT, makeStopTimerEvent(new Date(end)))
+
+    // Add lap message with weighted calories based on estimated average power
+    encoder.onMesg(Profile.MesgNum.LAP, {
+      timestamp: new Date(end),
+      startTime: new Date(start),
+      totalElapsedTime: lapTime,
+      totalTimerTime: lapTime,
+      totalCalories: options.calories * (averagePower / totalPower),
+    })
+
+    totalTimerTime += lapTime
+  }
 
   encoder.onMesg(Profile.MesgNum.SESSION, {
     ...sessionMesgs[0],
@@ -155,12 +188,11 @@ export function convert(input, options = { calories: undefined }) {
     totalElapsedTime: totalElapsedTime,
     totalTimerTime: totalTimerTime,
 
+    totalCalories: options.calories,
     trigger: 'activityEnd',
     sport: 'eBiking',
     subSport: 'generic',
     eventType: 'stop',
-
-    totalCalories: options.calories,
   })
 
   encoder.onMesg(Profile.MesgNum.ACTIVITY, {

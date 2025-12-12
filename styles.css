@@ -11,9 +11,8 @@ html {
 }
 
 body {
-  color: var(--text);
-  background-color: var(--bg);
-  background-attachment: fixed;
+  color: #212121;
+  background-color: #fefefe;
   min-height: 100vh;
 }
 
@@ -22,8 +21,8 @@ form {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  max-width: 90%;
-  width: 20rem;
+  width: 90%;
+  max-width: 20rem;
 }
 
 label,
@@ -35,6 +34,14 @@ button {
   padding: 0;
   border: 0;
   outline: 0;
+}
+
+label,p {
+  font-size: 1.1rem;
+}
+
+input, button {
+  font-size: 1rem;
 }
 
 label {
