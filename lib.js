@@ -155,6 +155,12 @@ export function convert(input, options = { calories }) {
     const end = lap[lap.length - 1].timestamp.getTime()
     const lapTime = (end - start) / 1000
 
+    if (lap.length === 1) {
+      // Hopefully won't happen, but if it does and you're seeing this,
+      // contact me!
+      throw new Error('Expected more than one record in each lap')
+    }
+
     // Add start timer event, records, and stop timer event
     encoder.onMesg(Profile.MesgNum.EVENT, makeStartTimerEvent(new Date(start)))
     for (const record of lap) {
