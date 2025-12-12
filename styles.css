@@ -1,0 +1,78 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, avenir next, avenir, segoe ui,
+    helvetica neue, helvetica, Cantarell, Ubuntu, roboto, noto, arial,
+    sans-serif;
+  line-height: 1.25;
+}
+
+body {
+  color: var(--text);
+  background-color: var(--bg);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+form {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 90%;
+  width: 20rem;
+}
+
+label,
+input,
+button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+}
+
+label {
+  font-weight: bold;
+  margin-bottom: 0.3rem;
+}
+
+input {
+  border: 1px solid #2c3e50;
+  padding: 0.25rem 0.5rem;
+  border-radius: 5px;
+}
+
+button {
+  background: #2c3e50;
+  padding: 0.5rem;
+  border-radius: 7px;
+  font-weight: bold;
+  color: white;
+  cursor: pointer;
+}
+
+div {
+  margin: 1rem 0;
+}
+
+.alert {
+  padding: 0.5rem;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#alert p.success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+#alert p.error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
