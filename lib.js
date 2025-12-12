@@ -83,7 +83,7 @@ function splitRecordsIntoLaps(records) {
       const lastRecord = lastLap[lastLap.length - 1]
       if (
         record.timestamp.getTime() - lastRecord.timestamp.getTime() >
-        10000 // 10 seconds
+        60000 // 60 seconds - seems to be the threshold for pauses.
       ) {
         laps.push([])
       }
