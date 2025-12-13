@@ -37,6 +37,8 @@ function consolidateRecords(messages) {
   return (
     Array.from(Object.values(messagesByTimestamp))
       // Fixes weird issue where some readers are not able to read the values of some fields.
+      // This sortering should be done by the SDK itself. Should validate against new SDK
+      // version to see if still a problem.
       .map((message) =>
         Object.fromEntries(
           Object.entries(message).sort((a, b) => {
@@ -50,15 +52,15 @@ function consolidateRecords(messages) {
   )
 }
 
+// Calculates the average power for a given collection of records (a lap). This
+// is done by weighting the power through the time, and dividing it by the total time.
+// This is not 100% accurate, but should be good enough to distribute calories.
 function calculateAveragePower(lap) {
   const records = lap.filter((r) => typeof r.power === 'number')
   if (records.length === 1) {
     return records[0].power
   }
 
-  // This is an estimation. It could be that there's many missing points of power
-  // in the whole lap. The idea is mostly to have a weight to be able to distribute
-  // the calories.
   const weightedPower = records.reduce(
     (acc, _, i, a) =>
       i === 0
@@ -74,8 +76,11 @@ function calculateAveragePower(lap) {
   return weightedPower / (end - start)
 }
 
-function splitRecordsIntoLaps(records) {
-  const activeGroups = records.reduce((laps, record) => {
+// Splits the records into laps based on pauses in the activity. A pause is defined
+// as a gap of more than 60 seconds between two records. This is based on observations
+// of how the Flow app handles pauses.
+function groupRecordsIntoLaps(records) {
+  const laps = records.reduce((laps, record) => {
     if (laps.length === 0) {
       laps.push([])
     } else if (laps[laps.length - 1].length > 0) {
@@ -83,7 +88,7 @@ function splitRecordsIntoLaps(records) {
       const lastRecord = lastLap[lastLap.length - 1]
       if (
         record.timestamp.getTime() - lastRecord.timestamp.getTime() >
-        60000 // 60 seconds - seems to be the threshold for pauses.
+        60000 // 60 seconds
       ) {
         laps.push([])
       }
@@ -93,7 +98,7 @@ function splitRecordsIntoLaps(records) {
     return laps
   }, [])
 
-  return activeGroups.map((records) => ({
+  return laps.map((records) => ({
     records,
     averagePower: calculateAveragePower(records),
   }))
@@ -108,7 +113,8 @@ export function convert(input, options = { calories }) {
 
   const { messages, errors } = decoder.read()
   if (errors.length > 0) {
-    throw new Error('Errors encountered while reading FIT file')
+    console.error('Failed to decode FIT file', errors)
+    throw new Error('Failed to decode FIT file.')
   }
 
   const { fileIdMesgs, recordMesgs, lapMesgs, sessionMesgs, ...other } =
@@ -118,16 +124,19 @@ export function convert(input, options = { calories }) {
   }
 
   if (!Array.isArray(sessionMesgs) || sessionMesgs.length !== 1) {
-    throw new Error('Expected exactly one session message')
+    throw new Error('Expected exactly one session message.')
   }
 
   if (!Array.isArray(fileIdMesgs) || fileIdMesgs.length !== 1) {
-    throw new Error('Expected exactly one file ID message')
+    throw new Error('Expected exactly one file ID message.')
   }
 
   if (!Array.isArray(lapMesgs) || lapMesgs.length !== 1) {
-    throw new Error('Expected exactly one lap message')
+    throw new Error('Expected exactly one lap message.')
   }
+
+  console.debug(`File ID message:`, fileIdMesgs[0])
+  console.debug(`Found ${recordMesgs.length} record messages.`)
 
   // Create an Encoder
   const encoder = new Encoder()
@@ -137,41 +146,80 @@ export function convert(input, options = { calories }) {
   })
 
   const consolidatedRecords = consolidateRecords(recordMesgs)
-  const groupedRecords = splitRecordsIntoLaps(consolidatedRecords)
+  console.debug(
+    `Consolidated to ${consolidatedRecords.length} record messages.`
+  )
+
+  const groupedRecords = groupRecordsIntoLaps(consolidatedRecords)
+  console.debug(`Grouped into ${groupedRecords.length} laps.`)
 
   const firstTimestamp = consolidatedRecords[0].timestamp.getTime()
   const lastTimestamp =
-    consolidatedRecords[consolidatedRecords.length - 1].timestamp.getTime()
+    consolidatedRecords[consolidatedRecords.length - 1].timestamp.getTime() +
+    1000
 
   const totalPower = groupedRecords.reduce(
     (acc, group) => acc + group.averagePower,
     0
   )
+
   const totalElapsedTime = (lastTimestamp - firstTimestamp) / 1000
   let totalTimerTime = 0
 
-  for (const { records: lap, averagePower } of groupedRecords) {
-    const start = lap[0].timestamp.getTime()
-    const end = lap[lap.length - 1].timestamp.getTime()
-    const lapTime = (end - start) / 1000
+  for (let i = 0; i < groupedRecords.length; i++) {
+    const { records, averagePower } = groupedRecords[i]
+    if (records.length === 1) {
+      // Hopefully won't happen.
+      throw new Error('Expected more than one record in each lap.')
+    }
 
-    if (lap.length === 1) {
-      // Hopefully won't happen, but if it does and you're seeing this,
-      // contact me!
-      throw new Error('Expected more than one record in each lap')
+    const lapStart = records[0].timestamp.getTime()
+    const lapEnd = records[records.length - 1].timestamp.getTime() + 1000
+    const lapTime = (lapEnd - lapStart) / 1000
+
+    // Create a lap message for the pause before this lap. According to the
+    // specification, "Lap messages should be sequential and non-overlapping,
+    // and the sum of the total elapsed time and distance values for all Lap
+    // messages should equal the total elapsed time and distance for the
+    // corresponding Session message."
+    //
+    // So it sounds like we need to create an empty lap for the pauses with 0
+    // calories in order to have a proportional calory distribution. Bosch only
+    // counts the calories of the active parts:
+    // https://help.bosch-ebike.com/ca/help-center/ebw-flowapp-activitytracking/asset-asf-01050
+    if (i !== 0) {
+      const { records: previousLap } = groupedRecords[i - 1]
+      const pauseStart =
+        previousLap[previousLap.length - 1].timestamp.getTime() + 1000
+      const pauseEnd = lapStart
+
+      const pauseTime = (pauseEnd - pauseStart) / 1000
+
+      totalPauseTime += pauseTime
+
+      encoder.onMesg(Profile.MesgNum.LAP, {
+        timestamp: new Date(pauseEnd),
+        startTime: new Date(pauseStart),
+        totalElapsedTime: pauseTime,
+        totalTimerTime: 0,
+        totalCalories: 0,
+      })
     }
 
     // Add start timer event, records, and stop timer event
-    encoder.onMesg(Profile.MesgNum.EVENT, makeStartTimerEvent(new Date(start)))
-    for (const record of lap) {
+    encoder.onMesg(
+      Profile.MesgNum.EVENT,
+      makeStartTimerEvent(new Date(lapStart))
+    )
+    for (const record of records) {
       encoder.onMesg(Profile.MesgNum.RECORD, record)
     }
-    encoder.onMesg(Profile.MesgNum.EVENT, makeStopTimerEvent(new Date(end)))
+    encoder.onMesg(Profile.MesgNum.EVENT, makeStopTimerEvent(new Date(lapEnd)))
 
     // Add lap message with weighted calories based on estimated average power
     encoder.onMesg(Profile.MesgNum.LAP, {
-      timestamp: new Date(end),
-      startTime: new Date(start),
+      timestamp: new Date(lapEnd),
+      startTime: new Date(lapStart),
       totalElapsedTime: lapTime,
       totalTimerTime: lapTime,
       totalCalories: options.calories * (averagePower / totalPower),
