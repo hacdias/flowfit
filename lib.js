@@ -192,10 +192,7 @@ export function convert(input, options = { calories }) {
       const pauseStart =
         previousLap[previousLap.length - 1].timestamp.getTime() + 1000
       const pauseEnd = lapStart
-
       const pauseTime = (pauseEnd - pauseStart) / 1000
-
-      totalPauseTime += pauseTime
 
       encoder.onMesg(Profile.MesgNum.LAP, {
         timestamp: new Date(pauseEnd),
