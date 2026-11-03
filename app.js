@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const report = document.querySelector('#report')
   const dropzone = document.querySelector('#dropzone')
   const fileInput = document.querySelector('#file')
-  const fileRow = document.querySelector('#file-row')
+  const fileEmpty = document.querySelector('#file-empty')
+  const fileSelected = document.querySelector('#file-selected')
   const fileName = document.querySelector('#file-name')
   const fileSize = document.querySelector('#file-size')
   const caloriesInput = document.querySelector('#calories')
@@ -32,12 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
     submit.textContent = submitLabel
   }
 
-  // Toggles the error state of #<id>-row and #<id>-error for the input.
+  // Toggles the error state of the input's parent and #<id>-error.
   const setInvalid = (input, invalid) => {
     const message = document.querySelector(`#${input.id}-error`)
-    document
-      .querySelector(`#${input.id}-row`)
-      .classList.toggle('invalid', invalid)
+    input.parentElement.classList.toggle('invalid', invalid)
     message.hidden = !invalid
     input.setAttribute('aria-invalid', invalid)
     if (invalid) {
@@ -52,8 +51,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const valid = !!file && file.name.toLowerCase().endsWith('.fit')
 
     hideAlert()
-    dropzone.hidden = !!file
-    fileRow.hidden = !file
+    dropzone.dataset.state = file ? 'selected' : 'empty'
+    fileEmpty.hidden = !!file
+    fileSelected.hidden = !file
+    fileInput.setAttribute(
+      'aria-label',
+      file ? `Change file, ${file.name}` : 'Choose a .fit file'
+    )
     submit.disabled = !valid
     setInvalid(fileInput, !!file && !valid)
 
@@ -77,23 +81,27 @@ document.addEventListener('DOMContentLoaded', () => {
     dropzone.classList.add('over')
   })
 
-  dropzone.addEventListener('dragleave', () => {
-    dropzone.classList.remove('over')
+  dropzone.addEventListener('dragleave', (event) => {
+    // The selected block has children, and moving between them isn't leaving.
+    if (!dropzone.contains(event.relatedTarget)) {
+      dropzone.classList.remove('over')
+    }
   })
 
   dropzone.addEventListener('drop', (event) => {
     event.preventDefault()
     dropzone.classList.remove('over')
-    fileInput.files = event.dataTransfer.files
-    showFile()
+    // Dropping something that isn't a file, e.g. text, must keep the current one.
+    if (event.dataTransfer.files.length > 0) {
+      fileInput.files = event.dataTransfer.files
+      showFile()
+    }
   })
 
-  // Labels can't be activated from the keyboard, so handle Enter/Space.
-  document.querySelector('#change').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      fileInput.click()
-    }
+  document.querySelector('#remove').addEventListener('click', () => {
+    fileInput.value = ''
+    showFile()
+    fileInput.focus()
   })
 
   caloriesInput.addEventListener('input', () =>
@@ -131,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       link = a
       outputName.textContent = a.download
+      outputName.title = a.download
       form.hidden = true
       success.hidden = false
       document.querySelector('#success-title').focus()

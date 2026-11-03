@@ -3,7 +3,10 @@
   --bg: light-dark(#F4F5F7, #0F1113);
   --surface: light-dark(#FFFFFF, #181B1F);
   --raised: light-dark(#E5E7EB, #23272C);
+  --raised-soft: light-dark(#EEF0F2, #1F2328);
   --border: light-dark(#C3C9D0, #343A41);
+  --border-soft: light-dark(#D6DADF, #2A2F35);
+  --drop: light-dark(#FAFBFC, #15181B);
   --text: light-dark(#15181B, #E8EAED);
   --muted: light-dark(#5F666E, #9AA1A9);
   --accent: #7BD88F;
@@ -102,12 +105,25 @@ h1 {
   justify-content: center;
   min-height: 196px;
   margin-bottom: 12px;
-  padding: 24px;
+  padding: 16px 24px;
   border: 1.5px dashed var(--border);
   border-radius: var(--radius);
+  background: var(--drop);
   text-align: center;
-  cursor: pointer;
   transition: border-color 0.15s;
+}
+
+.dropzone[data-state='selected'] {
+  border: 1.5px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.dropzone.invalid {
+  border-color: var(--error);
+}
+
+.dropzone.over {
+  border-color: var(--accent);
 }
 
 .dropzone input {
@@ -119,13 +135,21 @@ h1 {
   cursor: pointer;
 }
 
-.dropzone:has(:focus-visible) {
+.dropzone[data-state='selected'] input {
+  pointer-events: none;
+}
+
+.dropzone[data-state='empty']:has(input:focus-visible),
+.dropzone:has(input:focus-visible) .change {
   outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
-.dropzone.over {
-  border-color: var(--accent);
+.dropzone-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
 .dropzone-icon {
@@ -148,32 +172,14 @@ h1 {
   font-size: 14px;
 }
 
-.card {
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
 .row {
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: 56px;
   padding: 6px 16px;
-}
-
-.row:first-child,
-[hidden] + .row {
-  border-top-left-radius: var(--radius);
-  border-top-right-radius: var(--radius);
-}
-
-.row:last-child {
-  border-bottom-left-radius: var(--radius);
-  border-bottom-right-radius: var(--radius);
-}
-
-.file-row:not([hidden]) + .row {
-  border-top: 1px solid var(--raised);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .calories-row:focus-within {
@@ -185,52 +191,71 @@ h1 {
   box-shadow: inset 0 0 0 1.5px var(--error);
 }
 
-.file-row {
-  padding: 12px 8px 12px 14px;
+.file-selected {
+  gap: 8px;
 }
 
 .file-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  background: var(--raised);
-  color: var(--muted);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--raised-soft);
+  color: var(--accent-text);
 }
 
-.file-meta {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.file-name {
+.file-name,
+.output-name {
+  max-width: 100%;
   overflow: hidden;
-  font-size: 15px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.file-row.invalid .file-name {
+.file-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dropzone.invalid .file-icon,
+.dropzone.invalid .file-name {
   color: var(--error);
 }
 
-.file-size {
+.dropzone.invalid .file-check,
+.alert:not([hidden]) ~ .dropzone .file-check {
+  display: none;
+}
+
+.file-meta {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .change {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 10px;
-  border-radius: 10px;
+  position: relative;
+  border-radius: 4px;
   color: var(--accent-text);
   font-weight: 600;
+  cursor: pointer;
+}
+
+.change::after {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+
+.remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
   cursor: pointer;
 }
 
@@ -275,9 +300,22 @@ h1 {
   color: var(--muted);
 }
 
+.notes {
+  display: grid;
+  margin: 10px 4px 0;
+}
+
+.notes > * {
+  grid-area: 1 / 1;
+}
+
+.message:not([hidden]) + .hint {
+  visibility: hidden;
+}
+
 .message,
 .hint {
-  margin: 10px 4px 0;
+  margin: 0;
   font-size: 14px;
 }
 
@@ -395,7 +433,9 @@ details[open] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 20px 28px;
+  justify-content: center;
+  height: 196px;
+  padding: 16px 20px;
   border-radius: var(--radius);
   background: var(--surface);
   text-align: center;
@@ -423,7 +463,6 @@ details[open] {
 .output-name {
   margin: 8px 0 0;
   font-size: 14px;
-  overflow-wrap: anywhere;
 }
 
 .success-note {
@@ -472,6 +511,11 @@ footer {
 
 @media (hover: hover) {
   .change:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .remove:hover {
     background: var(--raised);
   }
 
