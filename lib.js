@@ -17,7 +17,7 @@ const makeStopTimerEvent = (date) => ({
 })
 
 const recordFields = Array.from(
-  Object.values(Profile.messages[Profile.MesgNum.RECORD].fields)
+  Object.values(Profile.messages[Profile.MesgNum.RECORD].fields),
 )
 
 function consolidateRecords(messages) {
@@ -45,8 +45,8 @@ function consolidateRecords(messages) {
             const aField = recordFields.find((f) => f.name === a[0])
             const bField = recordFields.find((f) => f.name === b[0])
             return aField.num - bField.num
-          })
-        )
+          }),
+        ),
       )
       .sort((a, b) => a.timestamp - b.timestamp)
   )
@@ -68,7 +68,7 @@ function calculateAveragePower(lap) {
         : acc +
           a[i].power *
             (a[i].timestamp.getTime() - a[i - 1].timestamp.getTime()),
-    0
+    0,
   )
 
   const start = records[0].timestamp.getTime()
@@ -147,7 +147,7 @@ export function convert(input, options = { calories }) {
 
   const consolidatedRecords = consolidateRecords(recordMesgs)
   console.debug(
-    `Consolidated to ${consolidatedRecords.length} record messages.`
+    `Consolidated to ${consolidatedRecords.length} record messages.`,
   )
 
   const groupedRecords = groupRecordsIntoLaps(consolidatedRecords)
@@ -160,7 +160,7 @@ export function convert(input, options = { calories }) {
 
   const totalPower = groupedRecords.reduce(
     (acc, group) => acc + group.averagePower,
-    0
+    0,
   )
 
   const totalElapsedTime = (lastTimestamp - firstTimestamp) / 1000
@@ -169,8 +169,9 @@ export function convert(input, options = { calories }) {
   for (let i = 0; i < groupedRecords.length; i++) {
     const { records, averagePower } = groupedRecords[i]
     if (records.length === 1) {
-      // Hopefully won't happen.
-      throw new Error('Expected more than one record in each lap.')
+      // Sometimes there are odd laps with a single record. Skip them.
+      console.warn(`Lap ${i} has only one record, skipping.`)
+      continue
     }
 
     const lapStart = records[0].timestamp.getTime()
@@ -206,7 +207,7 @@ export function convert(input, options = { calories }) {
     // Add start timer event, records, and stop timer event
     encoder.onMesg(
       Profile.MesgNum.EVENT,
-      makeStartTimerEvent(new Date(lapStart))
+      makeStartTimerEvent(new Date(lapStart)),
     )
     for (const record of records) {
       encoder.onMesg(Profile.MesgNum.RECORD, record)
